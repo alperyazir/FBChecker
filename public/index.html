@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login and Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #loginForm,
+        #dashboard {
+            display: none;
+        }
+
+        #loginForm.active,
+        #dashboard.active {
+            display: block;
+        }
+
+        #loginForm,
+        #dashboard {
+            text-align: center;
+            width: 80%;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid black;
+            border-collapse: collapse;
+            padding: 5px;
+            margin: 20px auto;
+        }
+
+        #lock {
+            margin: 20px;
+            display: inline-block;
+        }
+
+        #lockDialog {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 30px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            width: 400px;
+        }
+
+        #lockDialog.active {
+            display: block;
+        }
+
+        #lockForm {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+
+        #lockForm select {
+            width: 80%;
+            margin-bottom: 10px;
+            padding: 5px;
+        }
+
+        #lockDialogClose,
+        #unlockSubmit,
+        #lockSubmit {
+            margin-top: 10px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loginForm" class="active">
+        <h2>Login</h2>
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username"><br><br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password"><br><br>
+        <button onclick="login()">Login</button>
+        <p id="errorMessage" style="color:red;"></p>
+    </div>
+
+    <div id="dashboard">
+        <h2>Dashboard</h2>
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th>Hostname</th>
+                    <th>Publisher Name</th>
+                    <th>Book Name</th>
+                    <th>First Run Date</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Dinamik olarak doldurulacak -->
+            </tbody>
+        </table>
+
+        <div id="lock">
+            <button onclick="openLockDialog()">Lock</button>
+        </div>
+    </div>
+
+    <div id="lockDialog">
+        <form id="lockForm">
+            <!-- Combobox'lar dinamik olarak buraya eklenecek -->
+        </form>
+        <button id="lockSubmit" onclick="lockData()">Lock</button>
+        <button id="unlockSubmit" onclick="unlockData()">Unlock</button>
+        <button id="lockDialogClose" onclick="closeLockDialog()">Close</button>
+    </div>
+
+    <script>
+        const un = "26312c060072";
+        const pp = "139d158f15320035";
+        const socket = new WebSocket('ws://localhost:3000');
+
+        document.getElementById('loginForm').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+
+        function getstr(string) {
+                string = unescape(encodeURIComponent(string));
+            var newString = '',
+                char, nextChar, combinedCharCode;
+            for (var i = 0; i < string.length; i += 2) {
+                char = string.charCodeAt(i);
+
+                if ((i + 1) < string.length) {
+
+
+                    nextChar = string.charCodeAt(i + 1) - 31;
+
+
+                    combinedCharCode = char + "" + nextChar.toLocaleString('en', {
+                        minimumIntegerDigits: 2
+                    });
+
+                    newString += String.fromCharCode(parseInt(combinedCharCode, 10));
+
+                } else {
+
+
+                    newString += string.charAt(i);
+                }
+            }
+            return newString.split("").reduce((hex, c) => hex += c.charCodeAt(0).toString(16).padStart(4, "0"), "");
+            }
+
+        function login() {
+            const username = getstr(document.getElementById("username").value);
+            const password = getstr(document.getElementById("password").value);
+            console.log(document.getElementById("username").value)
+
+            if (username === un && password === pp) {
+                document.getElementById("loginForm").classList.remove("active");
+                document.getElementById("dashboard").classList.add("active");
+                setupWebSocket();  // WebSocket'i kur
+            } else {
+                document.getElementById("errorMessage").innerText = "Invalid username or password!";
+            }
+        }
+
+        function setupWebSocket() {
+            socket.onmessage = function (event) {
+                const data = JSON.parse(event.data);
+                updateTable(data);
+                //(); // Combobox'ları güncelle
+            };
+            sendLockMessage();
+        }
+
+        function sendLockMessage(data) {
+            socket.send(data);
+        }
+
+        function updateTable(data) {
+            const table = document.getElementById("dataTable").getElementsByTagName('tbody')[0];
+            let rowUpdated = false;
+
+            for (let i = 0; i < table.rows.length; i++) {
+                const row = table.rows[i];
+                const date = new Date(data.first_run_date * 1000);
+                const formattedDate = date.toLocaleString();
+                if (row.cells[0].innerText === data.hostname && 
+                    row.cells[1].innerText === data.publisher_name &&
+                    row.cells[2].innerText === data.book_name && 
+                    row.cells[3].innerText === formattedDate 
+                ) {
+                    row.cells[4].innerText = new Date().toLocaleString(); // Güncel timestamp
+                    rowUpdated = true;
+                    break;
+                }
+            }
+
+            if (!rowUpdated) {
+                const newRow = table.insertRow();
+                newRow.insertCell(0).innerText = data.hostname;
+                newRow.insertCell(1).innerText = data.publisher_name;
+                newRow.insertCell(2).innerText = data.book_name;
+                const date = new Date(data.first_run_date*1000);
+                const formattedDate = date.toLocaleString();
+                newRow.insertCell(3).innerText = formattedDate;
+                newRow.insertCell(4).innerText = new Date().toLocaleString(); // Güncel timestamp
+            }
+        }
+
+        function openLockDialog() {
+            const dialog = document.getElementById("lockDialog");
+            const table = document.getElementById('dataTable');
+            const lockForm = document.getElementById("lockForm");
+            lockForm.innerHTML = ""; // Önceki combobox'ları temizle
+
+            const columnCount = table.rows[0].cells.length;
+            for (let i = 0; i < columnCount - 1; i++) { // Son sütun hariç (Timestamp)
+                const uniqueValues = new Set();
+                for (let j = 1; j < table.rows.length; j++) {
+                    uniqueValues.add(table.rows[j].cells[i].innerText);
+                }
+
+                const label = document.createElement('label');
+                label.textContent = table.rows[0].cells[i].innerText + ":";
+                const select = document.createElement('select');
+                select.id = table.rows[0].cells[i].innerText.replace(/\s+/g, '_').toLowerCase(); // ID'yi sütun ismine göre ayarla
+
+                const optionDefault = document.createElement('option');
+                optionDefault.value = "-";
+                optionDefault.text = "-";
+                select.appendChild(optionDefault);
+
+                uniqueValues.forEach(value => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.text = value;
+                    select.appendChild(option);
+                });
+
+                lockForm.appendChild(label);
+                lockForm.appendChild(select);
+                lockForm.appendChild(document.createElement('br'));
+            }
+
+            dialog.classList.add("active");
+        }
+
+        function closeLockDialog() {
+            document.getElementById("lockDialog").classList.remove("active");
+        }
+
+        function lockData() {
+            const formData = {};
+            const selects = document.querySelectorAll('#lockForm select');
+
+            selects.forEach(select => {
+                const key = select.id;
+                const value = select.value;
+                if (value !== "-") {
+                    formData[key] = value;
+                }
+            });
+            formData["locked"] = true;
+            const jsonData = JSON.stringify(formData);
+            console.log(jsonData); // JSON verisini burada kullanabilirsin
+            sendLockMessage(jsonData);
+            closeLockDialog();
+        }
+
+        function unlockData() {
+            const formData = {};
+            const selects = document.querySelectorAll('#lockForm select');
+
+            selects.forEach(select => {
+                const key = select.id;
+                const value = select.value;
+                if (value !== "-") {
+                    formData[key] = value;
+                }
+            });
+
+            formData["locked"] = false;
+
+            const jsonData = JSON.stringify(formData);
+            console.log(jsonData); // JSON verisini burada kullanabilirsin
+            sendLockMessage(jsonData);
+            closeLockDialog();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            //populateComboboxes();
+        });
+    </script>
+
+</body>
+
+</html>
